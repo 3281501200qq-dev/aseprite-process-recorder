@@ -1,0 +1,11 @@
+installer/build/
+installer/validation-install/
+installer/ffmpeg/ffmpeg.exe
+test-output/
+benchmark-output/
+*.aprlog
+*.aseprite
+*.mp4
+*.log
+__pref.lua
+.process-recorder-data/

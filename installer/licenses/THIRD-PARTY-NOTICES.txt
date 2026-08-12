@@ -1,0 +1,26 @@
+Aseprite Process Recorder - Third-party notices
+================================================
+
+FFmpeg
+------
+Component: FFmpeg essentials_build-www.gyan.dev
+Build identifier: 2026-08-06-git-95c43d7df7
+License: GNU General Public License version 3
+Installed separately at:
+  %LOCALAPPDATA%\Programs\Aseprite Process Recorder\FFmpeg\ffmpeg.exe
+
+FFmpeg source revision:
+  https://github.com/FFmpeg/FFmpeg/commit/95c43d7df7
+
+Build information and source instructions:
+  https://www.gyan.dev/ffmpeg/builds/
+  https://github.com/GyanD/codexffmpeg
+
+The complete GPLv3 text and the original build README are installed next to
+this notice. FFmpeg runs as a separate external process. The recorder sends
+raw RGBA frames to its standard input and does not link to FFmpeg libraries.
+
+zlib
+----
+The native process-recorder helper statically uses zlib. Its license notice is
+included in the plug-in directory under third_party\zlib-LICENSE.txt.

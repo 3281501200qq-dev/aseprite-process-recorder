@@ -1,0 +1,11 @@
+{
+  "installedFiles": [
+    "journal.lua",
+    "LICENSE.txt",
+    "main.lua",
+    "native/bin/process-recorder-helper-windows-x64.exe",
+    "package.json",
+    "recorder.lua",
+    "third_party/zlib-LICENSE.txt"
+  ]
+}
