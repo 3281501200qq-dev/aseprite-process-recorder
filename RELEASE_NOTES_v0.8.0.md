@@ -31,7 +31,7 @@ aseprite-process-recorder-0.8.0-windows-x64-cn-setup.exe
 SHA-256: EAE5AB48D37365C0B2A9B5F1A38DF3EB813B49159CCD1F4E8D55B2BB76FAAE50
 Size: 29,104,438 bytes
 
-Aseprite绘画过程记录器-Windows安装器使用指南-v0.8.0.md
+Aseprite.-Windows.-v0.8.0.md（GitHub 附件名限制；页面标签为“中文安装器使用指南”）
 SHA-256: DDE95265C78B20E7511AF0BE21505D71CA82770CC40699199A91C0968834F15C
 
 ffmpeg-95c43d7df7-source.zip
