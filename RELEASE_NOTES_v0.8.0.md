@@ -27,12 +27,21 @@
 ## 校验值
 
 ```text
+aseprite-process-recorder-0.8.0-windows-x64-cn-setup.exe
 SHA-256: EAE5AB48D37365C0B2A9B5F1A38DF3EB813B49159CCD1F4E8D55B2BB76FAAE50
 Size: 29,104,438 bytes
+
+Aseprite绘画过程记录器-Windows安装器使用指南-v0.8.0.md
+SHA-256: DDE95265C78B20E7511AF0BE21505D71CA82770CC40699199A91C0968834F15C
+
+ffmpeg-95c43d7df7-source.zip
+Full commit: 95c43d7df7b72e3a4e8dce8c6718cffedb32211d
+SHA-256: 0087D7C3151A5C7C7D669DF23CEA086DD2AE441AC72E5B2345616F1148541655
+Size: 23,952,983 bytes
 ```
 
 安装器未签名，Windows SmartScreen 可能显示“未知发布者”。
 
 ## 许可
 
-插件代码使用 MIT License。安装器中的 FFmpeg 为独立 GPLv3 第三方程序，确切构建与源码信息见仓库 `installer/licenses/`。
+插件代码使用 MIT License。安装器中的 FFmpeg 为独立 GPLv3 第三方程序；本 Release 同时附带对应 FFmpeg 提交的完整源码快照。Gyan.dev 构建来源和确切配置见仓库 `installer/licenses/`。
