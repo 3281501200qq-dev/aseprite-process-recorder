@@ -2,6 +2,8 @@ installer/build/
 installer/validation-install/
 installer/ffmpeg/ffmpeg.exe
 test-output/
+async-test-output/
+async-test-output-2/
 benchmark-output/
 *.aprlog
 *.aseprite

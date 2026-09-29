@@ -1,5 +1,6 @@
 {
   "installedFiles": [
+    "background-export.ps1",
     "journal.lua",
     "LICENSE.txt",
     "main.lua",

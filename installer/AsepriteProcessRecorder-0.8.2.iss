@@ -1,16 +1,16 @@
 #define AppName "Aseprite 绘画过程记录器"
-#define AppVersion "0.8.0"
+#define AppVersion "0.8.2"
 #define AppPublisher "Aseprite Process Recorder Contributors"
 #define AppId "AsepriteProcessRecorder"
 
 #ifdef ValidationBuild
 #define InstallRoot "{src}\validation-install\app"
 #define PluginRoot "{src}\validation-install\plugin"
-#define SetupFilename "aseprite-process-recorder-0.8.0-validation-setup"
+#define SetupFilename "aseprite-process-recorder-0.8.2-validation-setup"
 #else
 #define InstallRoot "{localappdata}\Programs\Aseprite Process Recorder"
 #define PluginRoot "{userappdata}\Aseprite\extensions\aseprite-process-recorder"
-#define SetupFilename "aseprite-process-recorder-0.8.0-windows-x64-cn-setup"
+#define SetupFilename "aseprite-process-recorder-0.8.2-windows-x64-cn-setup"
 #endif
 
 [Setup]
@@ -38,7 +38,7 @@ UninstallDisplayName={#AppName} {#AppVersion}
 UninstallDisplayIcon={app}\FFmpeg\ffmpeg.exe
 LicenseFile=licenses\GPL-3.0.txt
 InfoBeforeFile=README-安装说明.txt
-VersionInfoVersion=0.8.0.0
+VersionInfoVersion=0.8.2.0
 VersionInfoCompany={#AppPublisher}
 VersionInfoDescription={#AppName} Windows 安装程序
 VersionInfoProductName={#AppName}
@@ -86,6 +86,7 @@ Type: filesandordirs; Name: "{app}\Licenses"
 
 [UninstallDelete]
 Type: files; Name: "{#PluginRoot}\journal.lua"
+Type: files; Name: "{#PluginRoot}\background-export.ps1"
 Type: files; Name: "{#PluginRoot}\LICENSE.txt"
 Type: files; Name: "{#PluginRoot}\main.lua"
 Type: files; Name: "{#PluginRoot}\package.json"

@@ -26,13 +26,13 @@ FFmpeg 构建来源、GPLv3 全文和确切源码提交见 `installer/licenses/`
 
 ```powershell
 & "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe" `
-  ".\installer\AsepriteProcessRecorder-0.8.0.iss"
+  ".\installer\AsepriteProcessRecorder-0.8.2.iss"
 ```
 
 生成文件：
 
 ```text
-installer\build\aseprite-process-recorder-0.8.0-windows-x64-cn-setup.exe
+installer\build\aseprite-process-recorder-0.8.2-windows-x64-cn-setup.exe
 ```
 
 正式 v0.8.0 安装器 SHA-256：
@@ -51,6 +51,15 @@ EAE5AB48D37365C0B2A9B5F1A38DF3EB813B49159CCD1F4E8D55B2BB76FAAE50
 ```
 
 测试输出会写入仓库的 `test-output/`，该目录不会提交。
+
+后台任务和文档事件回归测试（批处理环境由测试模拟 UI 标志并手动驱动 Timer）：
+
+```powershell
+& 'D:\steam\steamapps\common\Aseprite\Aseprite.exe' -b --script '.\tests\test-async-export.lua'
+& 'D:\steam\steamapps\common\Aseprite\Aseprite.exe' -b --script '.\tests\test-document-lifecycle.lua'
+```
+
+以 `MODES PASS`、`ASYNC PASS`、`LIFECYCLE PASS` 及断言结果为准：Aseprite 的进程退出码不能单独证明 Lua 脚本通过。
 
 ## 发布说明
 

@@ -50,7 +50,10 @@ local function runCase(profile, changes)
   local expectedFinal = Image(sprite.cels[1].image)
 
   local stopStartedAt = os.clock()
-  local okStop, stopResult = recorder:stop { openOutput = false }
+  local okStop, stopResult = recorder:stop {
+    openOutput = false,
+    asyncExport = false
+  }
   local stopMilliseconds = elapsedMilliseconds(stopStartedAt)
   assert(okStop, stopResult)
   assert(not stopResult.cancelled, stopResult.reason)

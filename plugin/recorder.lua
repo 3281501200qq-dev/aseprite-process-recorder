@@ -18,6 +18,7 @@ local OPEN_OUTPUT_FRAME_LIMIT = 2000
 local OPEN_OUTPUT_BYTE_LIMIT = 128 * 1024 * 1024
 local OPEN_OUTPUT_DECODED_LIMIT = 256 * 1024 * 1024
 local DEFAULT_CAPTURE_PROFILE = "automatic"
+local ASYNC_EXPORT_TIMEOUT_SECONDS = 1800
 
 local function defaultHelperPath()
   local source = debug.getinfo(1, "S").source or ""
@@ -259,6 +260,26 @@ local function executeWindowsCommand(arguments)
   return osCommandSucceeded(first, second, third)
 end
 
+local function executeWindowsCommandAsync(jobFilename)
+  local source = debug.getinfo(1, "S").source:sub(2)
+  local workerFilename = app.fs.joinPath(app.fs.filePath(source), "background-export.ps1")
+  if not app.fs.isFile(workerFilename) then
+    return false, "缺少后台导出脚本。"
+  end
+  local command = "$worker=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('"
+    .. base64Encode(workerFilename) .. "'));"
+    .. "$job=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('"
+    .. base64Encode(jobFilename) .. "')); & $worker -JobFilename $job"
+  local encoded = base64Encode(command:gsub(".", function(character)
+    return character .. "\0"
+  end))
+  local first, second, third = os.execute(
+    'start "" /B powershell.exe -WindowStyle Hidden -NoLogo -NoProfile '
+      .. '-NonInteractive -ExecutionPolicy Bypass -EncodedCommand '
+      .. encoded .. ' >nul 2>&1')
+  return osCommandSucceeded(first, second, third), "无法启动后台导出进程。"
+end
+
 local function executeCommand(arguments)
   if app.os.windows then
     return executeWindowsCommand(arguments)
@@ -446,7 +467,10 @@ function Recorder.new(options)
   return setmetatable({
     session = nil,
     helperPath = options.helperPath or defaultHelperPath(),
-    memoryBudgetBytes = normalizeMemoryBudget(options.memoryBudgetBytes)
+    memoryBudgetBytes = normalizeMemoryBudget(options.memoryBudgetBytes),
+    activeExportJob = nil,
+    exportQueue = {},
+    recoveredDirectories = {}
   }, Recorder)
 end
 
@@ -463,6 +487,10 @@ end
 
 function Recorder:isRecording()
   return self.session ~= nil
+end
+
+function Recorder:hasPendingExports()
+  return self.activeExportJob ~= nil or #self.exportQueue > 0
 end
 
 function Recorder:sourceSprite()
@@ -677,6 +705,7 @@ function Recorder:_ensureWriter(session)
     error("无法写入过程记录的初始画面。")
   end
   session.lastCaptureStats = baselineStats
+  session.initialImage = nil
   return writer
 end
 
@@ -797,9 +826,10 @@ function Recorder:_stopFlushTimer(session)
 end
 
 function Recorder:_discardSessionWriter(session)
-  if session.writer ~= nil then
-    session.writer:discard()
+  if session.writer == nil then
+    return
   end
+  session.writer:discard()
   local directory = self:_segmentDirectory(session)
   if app.fs.isDirectory(directory) and #app.fs.listFiles(directory) == 0 then
     app.fs.removeDirectory(directory)
@@ -813,6 +843,10 @@ function Recorder:_detachListeners()
   end
   self:_stopFlushTimer(session)
   self:_stopCaptureTimer(session)
+  if session.closeListener ~= nil then
+    app.events:off(session.closeListener)
+    session.closeListener = nil
+  end
   for _, listenerCode in ipairs(session.listenerCodes) do
     pcall(function()
       session.sourceSprite.events:off(listenerCode)
@@ -885,6 +919,14 @@ end
 
 function Recorder:_attachListeners()
   local session = self.session
+  session.closeListener = app.events:on("beforecommand", function(event)
+    if event.name == "CloseFile" or event.name == "CloseAllFiles"
+        or event.name == "CloseAllFilesExceptActive" or event.name == "Exit" then
+      if self.session == session and session.deferredCapture ~= nil then
+        self:_handleDeferredCapture(session)
+      end
+    end
+  end)
   for _, eventName in ipairs(CAPTURE_EVENTS) do
     local capturedEventName = eventName
     local listenerCode = session.sourceSprite.events:on(eventName, function(event)
@@ -1078,7 +1120,7 @@ function Recorder:start(sprite, options)
     startedAt = os.clock(),
     historyCount = historyCount,
     currentImage = currentImage,
-    initialImage = Image(currentImage),
+    initialImage = currentImage,
     initialFrameNumber = frameNumber,
     writer = nil,
     segmentFilename = nil,
@@ -1136,6 +1178,10 @@ function Recorder:_buildManifest(session, elapsedMs, writerStats)
   local previousOutputs = {}
 
   if continuesExisting then
+    local latest = Journal.readJson(session.baseManifestFilename)
+    if latest ~= nil then
+      session.baseManifest = latest
+    end
     base = session.baseManifest.outputBase
     manifestFilename = session.baseManifestFilename
     segments = copySegments(session.baseManifest.segments)
@@ -1181,6 +1227,10 @@ function Recorder:_buildManifest(session, elapsedMs, writerStats)
 
   return {
     schemaVersion = 2,
+    exportRevision = session.sessionId,
+    exportPending = true,
+    outputWidth = session.currentImage.width,
+    outputHeight = session.currentImage.height,
     captureMode = "visible-work-process",
     recordingProfile = session.captureProfile,
     sourceFilename = session.sourceFilename,
@@ -1238,6 +1288,219 @@ function Recorder:_runAsepriteExport(manifest)
     return false, "原生导出器没有生成任何输出文件。"
   end
   return true, report
+end
+
+function Recorder:_queueAsepriteExport(manifest, options)
+  options = options or {}
+  if self.helperPath == nil or not app.fs.isFile(self.helperPath) then
+    return false, "当前平台缺少原生流式处理助手。"
+  end
+  local suffix = string.format("%d-%08x", os.time(), math.random(0, 0x7fffffff))
+  local segmentList = manifest.manifestFilename .. "." .. suffix .. ".segments.tmp"
+  local reportFilename = manifest.manifestFilename .. "." .. suffix .. ".export.tmp"
+  local statusFilename = manifest.manifestFilename .. "." .. suffix .. ".status.tmp"
+  local wroteList, listError = Journal.writeSegmentList(segmentList, manifest)
+  if not wroteList then
+    return false, listError
+  end
+  os.remove(reportFilename)
+  os.remove(statusFilename)
+  local job = {
+    manifest = manifest,
+    segmentList = segmentList,
+    reportFilename = reportFilename,
+    statusFilename = statusFilename,
+    openOutput = options.openOutput ~= false,
+    queuedAt = os.time(),
+    jobFilename = manifest.manifestFilename .. "." .. suffix .. ".job.json",
+    errorFilename = manifest.manifestFilename .. "." .. suffix .. ".error.txt",
+    helperPath = self.helperPath,
+    maxFrames = DEFAULT_MAX_PART_FRAMES,
+    maxBytes = DEFAULT_MAX_PART_BYTES
+  }
+  local saved, saveError = Journal.writeJsonAtomic(job.jobFilename, job)
+  if not saved then
+    os.remove(segmentList)
+    return false, saveError
+  end
+  table.insert(self.exportQueue, job)
+  return true, job
+end
+
+function Recorder:recoverExports(directory)
+  if not app.os.windows or self.recoveredDirectories[directory] then
+    return
+  end
+  self.recoveredDirectories[directory] = true
+  if not app.fs.isDirectory(directory) then
+    return
+  end
+  local known = {}
+  for _, job in ipairs(self.exportQueue) do
+    known[job.jobFilename] = true
+  end
+  if self.activeExportJob then
+    known[self.activeExportJob.jobFilename] = true
+  end
+  local recovered = {}
+  for _, name in ipairs(app.fs.listFiles(directory)) do
+    if name:sub(-9) == ".job.json" then
+      local filename = app.fs.joinPath(directory, name)
+      local job = Journal.readJson(filename)
+      if not known[filename] and job and job.jobFilename == filename
+          and job.manifest and job.segmentList and job.statusFilename then
+        job.openOutput = false
+        recovered[#recovered + 1] = job
+      end
+    end
+  end
+  table.sort(recovered, function(first, second)
+    return first.queuedAt < second.queuedAt
+  end)
+  for _, job in ipairs(recovered) do
+    table.insert(self.exportQueue, job)
+  end
+end
+
+function Recorder:_startNextExport()
+  if self.activeExportJob ~= nil or #self.exportQueue == 0 then
+    return true
+  end
+  local job = table.remove(self.exportQueue, 1)
+  self.activeExportJob = job
+  if app.fs.isFile(job.statusFilename) then
+    return true
+  end
+  local started, startError = executeWindowsCommandAsync(job.jobFilename)
+  if not started then
+    job.startError = startError
+    return false
+  end
+  job.startedAt = os.time()
+  return true
+end
+
+local function readFirstLine(filename)
+  local file = io.open(filename, "rb")
+  if file == nil then
+    return nil
+  end
+  local value = file:read("*l")
+  file:close()
+  return value
+end
+
+function Recorder:_finalizeAsepriteExport(job)
+  if job.startError ~= nil then
+    return false, job.startError
+  end
+  local exitCode = tonumber(readFirstLine(job.statusFilename))
+  if exitCode == nil then
+    return nil
+  end
+  local manifest = Journal.readJson(job.manifest.manifestFilename)
+  if manifest == nil then
+    return false, "无法读取导出清单，保留后台任务以便恢复。"
+  end
+  if exitCode == 99 or manifest.exportRevision ~= job.manifest.exportRevision then
+    self:_cleanExportJob(job)
+    return true, { cancelled = true, reason = "superseded" }
+  end
+  if exitCode ~= 0 then
+    return false, "后台导出失败；过程日志仍已保存。错误日志：" .. job.errorFilename
+  end
+  local report = parseReport(job.reportFilename)
+  if report == nil or #report.files == 0 then
+    return false, "原生导出器没有生成任何输出文件。"
+  end
+
+  local previousOutputs = manifest.outputFiles or {}
+  local newOutputSet = {}
+  for _, filename in ipairs(report.files) do
+    if not app.fs.isFile(filename) then
+      return false, "导出报告中的过程文件不存在：" .. filename
+    end
+    newOutputSet[normalizedPath(filename)] = true
+  end
+  manifest.outputFiles = report.files
+  manifest.outputFrameCount = report.frame_count
+  manifest.recordCount = report.frame_count
+  manifest.journalRecordCount = 0
+  for _, segment in ipairs(manifest.segments) do
+    manifest.journalRecordCount = manifest.journalRecordCount
+      + tonumber(segment.recordCount or 0)
+  end
+  manifest.outputPartCount = report.part_count
+  manifest.outputWidth = report.width
+  manifest.outputHeight = report.height
+  manifest.exportPending = false
+  local wroteManifest, manifestError = Journal.writeJsonAtomic(
+    manifest.manifestFilename, manifest)
+  if not wroteManifest then
+    return false, "过程文件已生成，但清单更新失败：" .. tostring(manifestError)
+  end
+  for _, filename in ipairs(previousOutputs) do
+    if not newOutputSet[normalizedPath(filename)] then
+      os.remove(filename)
+    end
+  end
+  self:_cleanExportJob(job)
+
+  local outputSprite = nil
+  if job.openOutput and self.session == nil then
+    outputSprite = self:_openSmallOutput(report)
+  end
+  return true, {
+    pending = false,
+    cancelled = false,
+    elapsedMs = manifest.elapsedMs,
+    frameCount = report.frame_count,
+    playbackSpeed = manifest.playbackSpeed,
+    outputFilename = report.files[1],
+    outputFiles = report.files,
+    outputPartCount = #report.files,
+    outputSprite = outputSprite,
+    manifestFilename = manifest.manifestFilename,
+    journalBytes = manifest.journalBytes or 0,
+    recordInterval = manifest.recordInterval,
+    captureProfile = manifest.recordingProfile,
+    coalescedEvents = manifest.coalescedEvents or 0
+  }
+end
+
+function Recorder:_cleanExportJob(job)
+  os.remove(job.segmentList)
+  os.remove(job.reportFilename)
+  os.remove(job.statusFilename)
+  os.remove(job.errorFilename)
+  os.remove(job.jobFilename)
+end
+
+function Recorder:pollExportJob()
+  if self.activeExportJob == nil then
+    self:_startNextExport()
+    if self.activeExportJob == nil then
+      return nil
+    end
+  end
+  local job = self.activeExportJob
+  if job.startError == nil and tonumber(readFirstLine(job.statusFilename)) == nil then
+    if os.time() - (job.startedAt or os.time())
+        > ASYNC_EXPORT_TIMEOUT_SECONDS and not job.timeoutReported then
+      job.timeoutReported = true
+      return false, "后台导出耗时较长或启动失败；任务和日志仍保留，不会并发覆盖输出。"
+    end
+    return nil
+  end
+  self.activeExportJob = nil
+  local ok, result = self:_finalizeAsepriteExport(job)
+  return ok, result
+end
+
+function Recorder:shutdownExports()
+  if self.activeExportJob == nil then
+    self:_startNextExport()
+  end
 end
 
 function Recorder:_openSmallOutput(report)
@@ -1346,6 +1609,34 @@ function Recorder:stop(options)
       .. tostring(manifestError)
   end
 
+  if app.os.windows and options.asyncExport ~= false then
+    self.session = nil
+    local queued, jobOrError = self:_queueAsepriteExport(manifest, options)
+    if not queued then
+      return false, "过程日志已安全保存在 " .. manifest.manifestFilename
+        .. "，但后台导出启动失败：" .. tostring(jobOrError)
+    end
+    return true, {
+      pending = true,
+      branched = session.baseManifest ~= nil and not continuesExisting,
+      cancelled = false,
+      continued = continuesExisting,
+      elapsedMs = elapsedMs,
+      frameCount = nil,
+      sessionFrameCount = writerStats ~= nil and writerStats.recordCount or 0,
+      playbackSpeed = session.playbackSpeed,
+      outputFilename = manifest.outputBase .. ".aseprite",
+      outputPartCount = 0,
+      manifestFilename = manifest.manifestFilename,
+      journalBytes = manifest.journalBytes or 0,
+      duplicateEventsSkipped = session.duplicateEvents,
+      writerStats = writerStats,
+      recordInterval = session.recordInterval,
+      captureProfile = session.captureProfile,
+      coalescedEvents = session.coalescedEvents
+    }
+  end
+
   local exported, reportOrError = self:_runAsepriteExport(manifest)
   if not exported then
     self.session = nil
@@ -1374,6 +1665,7 @@ function Recorder:stop(options)
   manifest.outputPartCount = report.part_count
   manifest.outputWidth = report.width
   manifest.outputHeight = report.height
+  manifest.exportPending = false
   Journal.writeJsonAtomic(manifest.manifestFilename, manifest)
 
   local outputSprite = nil

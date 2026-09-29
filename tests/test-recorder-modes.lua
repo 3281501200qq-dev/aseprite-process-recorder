@@ -2,7 +2,8 @@ local scriptFilename = debug.getinfo(1, "S").source:sub(2)
 local testsDirectory = app.fs.filePath(scriptFilename)
 local repositoryDirectory = app.fs.filePath(testsDirectory)
 local pluginDirectory = app.fs.joinPath(repositoryDirectory, "plugin")
-local outputDirectory = app.fs.joinPath(repositoryDirectory, "test-output")
+local outputDirectory = app.fs.joinPath(repositoryDirectory,
+  "test-output/modes-" .. os.date("%Y%m%d-%H%M%S") .. "-" .. math.random(10000, 99999))
 local resultFilename = outputDirectory .. [[\results.txt]]
 package.path = pluginDirectory .. [[\?.lua;]] .. package.path
 
@@ -58,13 +59,20 @@ local function runCase(name, width, height, profile, changes, flushAfterEach)
   local expectedFinal = Image(sprite.cels[1].image)
   local deferredBeforeStop = recorder.session.deferredCapture ~= nil
   local coalescedBeforeStop = recorder.session.coalescedEvents
-  local okStop, stopResult = recorder:stop { openOutput = false }
+  local okStop, stopResult = recorder:stop {
+    openOutput = false,
+    asyncExport = false
+  }
   assert(okStop, stopResult)
   assert(not stopResult.cancelled, stopResult.reason)
 
   local finalOutput = Sprite { fromFile = stopResult.outputFilename }
   local finalCel = finalOutput.layers[1]:cel(finalOutput.frames[#finalOutput.frames])
   local finalMatches = finalCel ~= nil and finalCel.image:isEqual(expectedFinal)
+  assert(finalMatches, "Final frame mismatch: " .. name)
+  local expectedFrames = (startResult.captureDelayMs == 0 or flushAfterEach)
+    and changes + 1 or 2
+  assert(stopResult.frameCount == expectedFrames, "Frame count mismatch: " .. name)
   appendResult(name, {
     profile = startResult.captureProfile,
     delay_ms = startResult.captureDelayMs,
@@ -89,3 +97,4 @@ runCase("automatic-512-separated", 512, 512, "automatic", 8, true)
 local output = assert(io.open(resultFilename, "wb"))
 output:write(table.concat(results, "\n"), "\n")
 output:close()
+print("MODES PASS: " .. outputDirectory)

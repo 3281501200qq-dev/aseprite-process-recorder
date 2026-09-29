@@ -7,11 +7,13 @@ local DEFAULT_MEMORY_BUDGET_MB = 256
 local MEMORY_BUDGETS_MB = { 128, 256, 512, 1024 }
 local DEFAULT_CAPTURE_MODE = "automatic"
 local DEFAULT_VIDEO_SCALE = "auto"
+local DEFAULT_AUTO_START = true
 local MODE_COMPLETE_LABEL = "完整模式（每次变化）"
 local MODE_AUTOMATIC_LABEL = "自动模式（推荐）"
 local MODE_PERFORMANCE_LABEL = "性能模式（大图/长时间）"
 local VIDEO_AUTO_LABEL = "自动安全放大（1–10倍）"
 local recorder = Recorder.new()
+local extensionPlugin = nil
 local automationListener = nil
 local automationSuppressed = false
 local knownSprites = {}
@@ -22,6 +24,8 @@ local captureMode = DEFAULT_CAPTURE_MODE
 local videoScale = DEFAULT_VIDEO_SCALE
 local helperPath = nil
 local ffmpegPath = nil
+local exportPollTimer = nil
+local autoStart = DEFAULT_AUTO_START
 
 local function showError(message)
   app.alert {
@@ -64,9 +68,8 @@ local function spriteIsOpen(sprite)
   if sprite == nil then
     return false
   end
-  local targetId = sprite.id
   for _, openSprite in ipairs(app.sprites) do
-    if openSprite.id == targetId then
+    if openSprite == sprite then
       return true
     end
   end
@@ -147,6 +150,13 @@ local function normalizeVideoScale(value)
     end
   end
   return DEFAULT_VIDEO_SCALE
+end
+
+local function normalizeAutoStart(value)
+  if value == nil then
+    return DEFAULT_AUTO_START
+  end
+  return value == true
 end
 
 local function setMemoryBudget(plugin, budgetMb)
@@ -250,35 +260,73 @@ local function beginRecording(sprite)
   end
 
   automationSuppressed = true
-  local ok, result = recorder:start(sprite, {
-    outputDirectory = outputDirectory,
-    playbackSpeed = playbackSpeed,
-    memoryBudgetBytes = memoryBudgetMb * 1024 * 1024,
-    captureProfile = captureMode,
-    recordInterval = 1
-  })
+  local callOk, ok, result = pcall(function()
+    return recorder:start(sprite, {
+      outputDirectory = outputDirectory,
+      playbackSpeed = playbackSpeed,
+      memoryBudgetBytes = memoryBudgetMb * 1024 * 1024,
+      captureProfile = captureMode,
+      recordInterval = 1
+    })
+  end)
   pcall(function()
     app.sprite = sprite
   end)
   automationSuppressed = false
-  if not ok then
-    showError(result)
+  if not callOk or not ok then
+    showError(callOk and result or ok)
     return false
   end
   return true
 end
 
+local function setAutoStart(plugin, enabled)
+  autoStart = normalizeAutoStart(enabled)
+  plugin.preferences.autoStart = autoStart
+  if autoStart then
+    knownSprites = {}
+    if app.sprite ~= nil and not recorder:isRecording()
+        and not isRecorderOutput(app.sprite) then
+      knownSprites[app.sprite.id] = true
+      beginRecording(app.sprite)
+    end
+  end
+end
+
+local function toggleAutoStart()
+  setAutoStart(extensionPlugin, not autoStart)
+  app.tip(autoStart
+    and "已开启：打开或切换画布时自动开始记录"
+    or "已关闭：不会自动开始记录，可手动点击“开始记录”")
+end
+
 local function finishRecording(showConfirmation, keepOutputOpen)
   automationSuppressed = true
-  local ok, result = recorder:stop {
-    openOutput = keepOutputOpen
-  }
+  local callOk, ok, result = pcall(function()
+    return recorder:stop { openOutput = keepOutputOpen }
+  end)
   rememberOpenSprites()
   automationSuppressed = false
 
-  if not ok then
-    showError(result)
+  if not callOk or not ok then
+    showError(callOk and result or ok)
     return false
+  end
+
+  if result.pending then
+    if showConfirmation then
+      app.alert {
+        title = "绘画过程记录器",
+        text = {
+          "过程日志已保存。",
+          "完整过程文件正在后台生成，不会阻塞当前文档操作。",
+          "完成后会自动更新输出文件。",
+          "清单：" .. result.manifestFilename
+        },
+        buttons = "OK"
+      }
+    end
+    return true
   end
 
   if result.cancelled then
@@ -345,6 +393,11 @@ local function showRecordingSettings(plugin)
       MODE_PERFORMANCE_LABEL
     }
   }
+  dialog:check {
+    id = "autoStart",
+    text = "打开或切换画布时自动开始记录",
+    selected = autoStart
+  }
   dialog:combobox {
     id = "playbackSpeed",
     label = "播放速度：",
@@ -390,6 +443,7 @@ local function showRecordingSettings(plugin)
   end
 
   local data = dialog.data
+  setAutoStart(plugin, data.autoStart == true)
   local newCaptureMode = data.captureMode == MODE_COMPLETE_LABEL
     and "complete"
     or (data.captureMode == MODE_PERFORMANCE_LABEL
@@ -465,11 +519,26 @@ local function stopRecording()
   finishRecording(true, true)
 end
 
-local function spriteIsValid(sprite)
-  local ok, isValid = pcall(function()
-    return sprite.isValid
+local function pollBackgroundExport()
+  if not recorder:hasPendingExports() then
+    return
+  end
+  automationSuppressed = true
+  local callOk, exportOk, exportResult = pcall(function()
+    return recorder:pollExportJob()
   end)
-  return not ok or isValid ~= false
+  rememberOpenSprites()
+  automationSuppressed = false
+  if not callOk then
+    showError(exportOk)
+  elseif exportOk == false then
+    showError(exportResult)
+  elseif exportOk == true and type(exportResult) == "table"
+      and exportResult.outputSprite ~= nil then
+    pcall(function()
+      app.sprite = exportResult.outputSprite
+    end)
+  end
 end
 
 local function onSiteChange()
@@ -479,10 +548,13 @@ local function onSiteChange()
   end
 
   local recordedSprite = recorder:sourceSprite()
-  if recordedSprite ~= nil and not spriteIsValid(recordedSprite) then
+  if recordedSprite ~= nil and not spriteIsOpen(recordedSprite) then
     finishRecording(false, false)
-    if sprite ~= nil and spriteIsValid(sprite) and spriteIsOpen(sprite) then
+    if autoStart and spriteIsOpen(sprite) then
       knownSprites[sprite.id] = true
+      if not isRecorderOutput(sprite) then
+        beginRecording(sprite)
+      end
     end
     return
   end
@@ -504,19 +576,28 @@ local function onSiteChange()
     return
   end
 
-  if knownSprites[sprite.id] then
+  local switchedRecording = false
+  if recorder:isRecording() and recorder:sourceSprite() ~= sprite then
+    finishRecording(false, false)
+    switchedRecording = true
+  end
+
+  if knownSprites[sprite.id] and not switchedRecording then
     return
   end
   knownSprites[sprite.id] = true
 
-  if recorder:isRecording() then
-    finishRecording(false, false)
-  end
   app.sprite = sprite
-  beginRecording(sprite)
+  if autoStart then
+    beginRecording(sprite)
+  end
 end
 
 function init(plugin)
+  extensionPlugin = plugin
+  if not app.isUIAvailable then
+    return
+  end
   if app.apiVersion < 23 then
     showError("需要 Aseprite 1.3-rc3 或更高版本（API 23）。")
     return
@@ -536,15 +617,23 @@ function init(plugin)
   plugin.preferences.memoryBudgetMb = memoryBudgetMb
   captureMode = normalizeCaptureMode(plugin.preferences.captureMode)
   plugin.preferences.captureMode = captureMode
+  autoStart = normalizeAutoStart(plugin.preferences.autoStart)
+  plugin.preferences.autoStart = autoStart
   videoScale = normalizeVideoScale(plugin.preferences.videoScale)
   plugin.preferences.videoScale = videoScale
   helperPath = detectHelperPath(plugin)
   ffmpegPath = detectFfmpegPath(plugin)
   recorder:setHelperPath(helperPath)
   recorder:setMemoryBudget(memoryBudgetMb * 1024 * 1024)
+  recorder:recoverExports(outputDirectory)
 
   rememberOpenSprites()
   automationListener = app.events:on("sitechange", onSiteChange)
+  exportPollTimer = Timer {
+    interval = 0.10,
+    ontick = pollBackgroundExport
+  }
+  exportPollTimer:start()
 
   plugin:newMenuGroup {
     id = "process_recorder_menu",
@@ -558,6 +647,16 @@ function init(plugin)
     group = "process_recorder_menu",
     onclick = function()
       showRecordingSettings(plugin)
+    end
+  }
+
+  plugin:newCommand {
+    id = "ProcessRecorderAutoStart",
+    title = "打开画布时自动开始记录",
+    group = "process_recorder_menu",
+    onclick = toggleAutoStart,
+    onchecked = function()
+      return autoStart
     end
   }
 
@@ -628,12 +727,18 @@ function init(plugin)
     end
   }
 
-  if app.sprite ~= nil then
+  if autoStart and app.sprite ~= nil then
     beginRecording(app.sprite)
   end
 end
 
 function exit(plugin)
+  if exportPollTimer ~= nil then
+    pcall(function()
+      exportPollTimer:stop()
+    end)
+    exportPollTimer = nil
+  end
   if automationListener ~= nil then
     app.events:off(automationListener)
     automationListener = nil
@@ -641,4 +746,5 @@ function exit(plugin)
   if recorder:isRecording() then
     finishRecording(false, false)
   end
+  recorder:shutdownExports()
 end
