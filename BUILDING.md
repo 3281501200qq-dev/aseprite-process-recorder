@@ -26,13 +26,13 @@ FFmpeg 构建来源、GPLv3 全文和确切源码提交见 `installer/licenses/`
 
 ```powershell
 & "$env:LOCALAPPDATA\Programs\Inno Setup 6\ISCC.exe" `
-  ".\installer\AsepriteProcessRecorder-0.8.2.iss"
+  ".\installer\AsepriteProcessRecorder-0.8.3.iss"
 ```
 
 生成文件：
 
 ```text
-installer\build\aseprite-process-recorder-0.8.2-windows-x64-cn-setup.exe
+installer\build\aseprite-process-recorder-0.8.3-windows-x64-multilingual-setup.exe
 ```
 
 正式 v0.8.0 安装器 SHA-256：
@@ -60,6 +60,14 @@ EAE5AB48D37365C0B2A9B5F1A38DF3EB813B49159CCD1F4E8D55B2BB76FAAE50
 ```
 
 以 `MODES PASS`、`ASYNC PASS`、`LIFECYCLE PASS` 及断言结果为准：Aseprite 的进程退出码不能单独证明 Lua 脚本通过。
+
+文档事件测试同时检查简体中文、英语、日语菜单选择和底层错误翻译。Inno Setup 6 安装目录需包含 `Languages\Japanese.isl`。
+
+```powershell
+python .\tests\test-translations.py
+```
+
+该检查确保三个翻译表涵盖全部已用的界面文案键。
 
 ## 发布说明
 

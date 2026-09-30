@@ -1,8 +1,8 @@
 {
   "name": "aseprite-process-recorder",
-  "displayName": "Aseprite 绘画过程记录器",
-  "description": "自动记录有效画面变化、精确时间戳，并流式生成 Aseprite 过程文件和 MP4 视频。",
-  "version": "0.8.2",
+  "displayName": "Aseprite Process Recorder",
+  "description": "Record drawing changes and export Aseprite process files or MP4 video.",
+  "version": "0.8.3",
   "author": {
     "name": "Aseprite Process Recorder Contributors"
   },

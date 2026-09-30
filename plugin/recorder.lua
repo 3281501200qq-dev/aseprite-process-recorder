@@ -1,4 +1,6 @@
 local Journal = require("journal")
+local I18n = require("i18n")
+local t = I18n.text
 
 local Recorder = {}
 Recorder.__index = Recorder
@@ -264,7 +266,7 @@ local function executeWindowsCommandAsync(jobFilename)
   local source = debug.getinfo(1, "S").source:sub(2)
   local workerFilename = app.fs.joinPath(app.fs.filePath(source), "background-export.ps1")
   if not app.fs.isFile(workerFilename) then
-    return false, "缺少后台导出脚本。"
+    return false, t("worker_missing")
   end
   local command = "$worker=[Text.Encoding]::UTF8.GetString([Convert]::FromBase64String('"
     .. base64Encode(workerFilename) .. "'));"
@@ -277,7 +279,7 @@ local function executeWindowsCommandAsync(jobFilename)
     'start "" /B powershell.exe -WindowStyle Hidden -NoLogo -NoProfile '
       .. '-NonInteractive -ExecutionPolicy Bypass -EncodedCommand '
       .. encoded .. ' >nul 2>&1')
-  return osCommandSucceeded(first, second, third), "无法启动后台导出进程。"
+  return osCommandSucceeded(first, second, third), t("worker_start_failed")
 end
 
 local function executeCommand(arguments)
@@ -622,7 +624,7 @@ end
 
 function Recorder.retimeOutput(sprite, speed)
   if sprite == nil or not isProcessOutput(sprite) then
-    return false, "请先打开过程记录文件，再修改播放速度。"
+    return false, t("open_process_to_retime")
   end
 
   local playbackSpeed = normalizePlaybackSpeed(speed)
@@ -680,7 +682,7 @@ function Recorder:_ensureWriter(session)
   local directory = self:_segmentDirectory(session)
   if not app.fs.isDirectory(directory)
       and not app.fs.makeAllDirectories(directory) then
-    error("无法创建过程数据目录：" .. directory)
+    error(t("create_data_dir") .. directory)
   end
   local filename = app.fs.joinPath(directory, session.sessionId .. ".aprlog")
   local writer, writerError = Journal.newWriter(filename, {
@@ -690,7 +692,7 @@ function Recorder:_ensureWriter(session)
     checkpointBytes = 64 * 1024 * 1024
   })
   if writer == nil then
-    error("无法创建过程日志：" .. tostring(writerError))
+    error(t("create_journal") .. tostring(writerError))
   end
   session.writer = writer
   session.segmentFilename = filename
@@ -702,7 +704,7 @@ function Recorder:_ensureWriter(session)
     fromUndo = false
   })
   if not baselineAdded then
-    error("无法写入过程记录的初始画面。")
+    error(t("initial_capture_failed"))
   end
   session.lastCaptureStats = baselineStats
   session.initialImage = nil
@@ -887,11 +889,11 @@ function Recorder:_handleCaptureEvent(eventName, event)
   self.session.captureError = tostring(captureError)
   self:_detachListeners()
   app.alert {
-    title = "绘画过程记录器",
+    title = t("title"),
     text = {
-      "发生错误，过程记录已暂停。",
+      t("capture_paused"),
       self.session.captureError,
-      "错误发生前的记录已经安全写入磁盘。"
+      t("capture_safe")
     },
     buttons = "OK"
   }
@@ -907,11 +909,11 @@ function Recorder:_handleDeferredCapture(session)
   session.captureError = tostring(captureError)
   self:_detachListeners()
   app.alert {
-    title = "绘画过程记录器",
+    title = t("title"),
     text = {
-      "发生错误，过程记录已暂停。",
+      t("capture_paused"),
       session.captureError,
-      "错误发生前的记录已经安全写入磁盘。"
+      t("capture_safe")
     },
     buttons = "OK"
   }
@@ -1039,13 +1041,13 @@ end
 
 function Recorder:start(sprite, options)
   if self.session ~= nil then
-    return false, "当前已经有正在进行的过程记录。"
+    return false, t("already_recording")
   end
   if sprite == nil then
-    return false, "请先打开一个 Sprite。"
+    return false, t("open_sprite")
   end
   if isProcessOutput(sprite) then
-    return false, "过程记录文件不会被再次记录。"
+    return false, t("output_not_recorded")
   end
 
   options = options or {}
@@ -1057,7 +1059,7 @@ function Recorder:start(sprite, options)
     options.memoryBudgetBytes or self.memoryBudgetBytes)
   if not app.fs.isDirectory(outputDirectory)
       and not app.fs.makeAllDirectories(outputDirectory) then
-    return false, "无法创建记录目录：" .. outputDirectory
+    return false, t("create_record_dir") .. outputDirectory
   end
 
   local displayedFilename = sprite.filename or ""
@@ -1084,7 +1086,7 @@ function Recorder:start(sprite, options)
         sourceFilename,
         legacyFilename)
       if migrated == nil then
-        return false, "无法迁移已有过程记录："
+        return false, t("migrate_failed")
           .. tostring(migrationError)
       end
       manifest = migrated
@@ -1152,7 +1154,7 @@ function Recorder:start(sprite, options)
   if not ok then
     self:_detachListeners()
     self.session = nil
-    return false, "无法初始化过程记录：" .. tostring(captureError)
+    return false, t("initialize_failed") .. tostring(captureError)
   end
 
   return true, {
@@ -1256,7 +1258,7 @@ end
 
 function Recorder:_runAsepriteExport(manifest)
   if self.helperPath == nil or not app.fs.isFile(self.helperPath) then
-    return false, "当前平台缺少原生流式处理助手。"
+    return false, t("helper_missing")
   end
   local segmentList = manifest.manifestFilename .. ".segments.tmp"
   local reportFilename = manifest.manifestFilename .. ".export.tmp"
@@ -1279,13 +1281,13 @@ function Recorder:_runAsepriteExport(manifest)
   os.remove(segmentList)
   if not succeeded then
     os.remove(reportFilename)
-    return false, "原生流式 Aseprite 导出失败。"
+    return false, t("native_export_failed")
   end
 
   local report = parseReport(reportFilename)
   os.remove(reportFilename)
   if report == nil or #report.files == 0 then
-    return false, "原生导出器没有生成任何输出文件。"
+    return false, t("native_no_output")
   end
   return true, report
 end
@@ -1293,7 +1295,7 @@ end
 function Recorder:_queueAsepriteExport(manifest, options)
   options = options or {}
   if self.helperPath == nil or not app.fs.isFile(self.helperPath) then
-    return false, "当前平台缺少原生流式处理助手。"
+    return false, t("helper_missing")
   end
   local suffix = string.format("%d-%08x", os.time(), math.random(0, 0x7fffffff))
   local segmentList = manifest.manifestFilename .. "." .. suffix .. ".segments.tmp"
@@ -1400,25 +1402,25 @@ function Recorder:_finalizeAsepriteExport(job)
   end
   local manifest = Journal.readJson(job.manifest.manifestFilename)
   if manifest == nil then
-    return false, "无法读取导出清单，保留后台任务以便恢复。"
+    return false, t("manifest_read_failed")
   end
   if exitCode == 99 or manifest.exportRevision ~= job.manifest.exportRevision then
     self:_cleanExportJob(job)
     return true, { cancelled = true, reason = "superseded" }
   end
   if exitCode ~= 0 then
-    return false, "后台导出失败；过程日志仍已保存。错误日志：" .. job.errorFilename
+    return false, t("background_failed") .. job.errorFilename
   end
   local report = parseReport(job.reportFilename)
   if report == nil or #report.files == 0 then
-    return false, "原生导出器没有生成任何输出文件。"
+    return false, t("native_no_output")
   end
 
   local previousOutputs = manifest.outputFiles or {}
   local newOutputSet = {}
   for _, filename in ipairs(report.files) do
     if not app.fs.isFile(filename) then
-      return false, "导出报告中的过程文件不存在：" .. filename
+      return false, t("report_file_missing") .. filename
     end
     newOutputSet[normalizedPath(filename)] = true
   end
@@ -1437,7 +1439,7 @@ function Recorder:_finalizeAsepriteExport(job)
   local wroteManifest, manifestError = Journal.writeJsonAtomic(
     manifest.manifestFilename, manifest)
   if not wroteManifest then
-    return false, "过程文件已生成，但清单更新失败：" .. tostring(manifestError)
+    return false, t("manifest_update_failed") .. tostring(manifestError)
   end
   for _, filename in ipairs(previousOutputs) do
     if not newOutputSet[normalizedPath(filename)] then
@@ -1488,7 +1490,7 @@ function Recorder:pollExportJob()
     if os.time() - (job.startedAt or os.time())
         > ASYNC_EXPORT_TIMEOUT_SECONDS and not job.timeoutReported then
       job.timeoutReported = true
-      return false, "后台导出耗时较长或启动失败；任务和日志仍保留，不会并发覆盖输出。"
+      return false, t("background_timeout")
     end
     return nil
   end
@@ -1543,7 +1545,7 @@ end
 function Recorder:stop(options)
   options = options or {}
   if self.session == nil then
-    return false, "当前没有正在进行的过程记录。"
+    return false, t("not_recording")
   end
 
   local session = self.session
@@ -1605,7 +1607,7 @@ function Recorder:stop(options)
     manifest.manifestFilename,
     manifest)
   if not wroteManifest then
-    return false, "过程日志已保存，但清单写入失败："
+    return false, t("manifest_write_failed")
       .. tostring(manifestError)
   end
 
@@ -1613,8 +1615,8 @@ function Recorder:stop(options)
     self.session = nil
     local queued, jobOrError = self:_queueAsepriteExport(manifest, options)
     if not queued then
-      return false, "过程日志已安全保存在 " .. manifest.manifestFilename
-        .. "，但后台导出启动失败：" .. tostring(jobOrError)
+      return false, t("log_safe") .. manifest.manifestFilename
+        .. t("background_start_failed") .. tostring(jobOrError)
     end
     return true, {
       pending = true,
@@ -1640,8 +1642,8 @@ function Recorder:stop(options)
   local exported, reportOrError = self:_runAsepriteExport(manifest)
   if not exported then
     self.session = nil
-    return false, "过程日志已安全保存在 " .. manifest.manifestFilename
-      .. "，但导出失败：" .. tostring(reportOrError)
+    return false, t("log_safe") .. manifest.manifestFilename
+      .. t("export_failed_suffix") .. tostring(reportOrError)
   end
 
   local report = reportOrError
@@ -1715,24 +1717,24 @@ end
 function Recorder:exportVideo(sprite, options)
   options = options or {}
   if self.session ~= nil then
-    return false, "请先停止当前记录，再导出视频。"
+    return false, t("stop_before_video")
   end
   if self.helperPath == nil or not app.fs.isFile(self.helperPath) then
-    return false, "当前平台缺少原生流式处理助手。"
+    return false, t("helper_missing")
   end
   local sourceFilename = self:_sourceFilenameFor(sprite)
   if sourceFilename == "" then
-    return false, "请先打开已保存的原图，或对应的过程文件。"
+    return false, t("open_saved_source")
   end
   local outputDirectory = options.outputDirectory or defaultOutputDirectory()
   local manifest = findManifestForSource(outputDirectory, sourceFilename)
   if manifest == nil then
-    return false, "没有找到与当前原图对应的磁盘过程日志。"
+    return false, t("journal_not_found")
   end
 
   local ffmpegPath = options.ffmpegPath
   if ffmpegPath == nil or not app.fs.isFile(ffmpegPath) then
-    return false, "没有找到 FFmpeg；请先在记录器设置中选择有效的可执行文件。"
+    return false, t("ffmpeg_invalid")
   end
   local scale = options.scale == "auto"
     and automaticVideoScale(manifest)
@@ -1763,12 +1765,12 @@ function Recorder:exportVideo(sprite, options)
   os.remove(segmentList)
   if not succeeded then
     os.remove(reportFilename)
-    return false, "FFmpeg 视频导出失败。"
+    return false, t("video_export_failed")
   end
   local report = parseReport(reportFilename)
   os.remove(reportFilename)
   if report == nil or not app.fs.isFile(outputFilename) then
-    return false, "FFmpeg 已结束，但没有生成预期的视频文件。"
+    return false, t("video_file_missing")
   end
   report.outputFilename = outputFilename
   report.exportMilliseconds = exportMilliseconds

@@ -1,6 +1,7 @@
 {
   "installedFiles": [
     "background-export.ps1",
+    "i18n.lua",
     "journal.lua",
     "LICENSE.txt",
     "main.lua",

@@ -1,16 +1,16 @@
-#define AppName "Aseprite 绘画过程记录器"
-#define AppVersion "0.8.2"
+#define AppName "Aseprite Process Recorder"
+#define AppVersion "0.8.3"
 #define AppPublisher "Aseprite Process Recorder Contributors"
 #define AppId "AsepriteProcessRecorder"
 
 #ifdef ValidationBuild
 #define InstallRoot "{src}\validation-install\app"
 #define PluginRoot "{src}\validation-install\plugin"
-#define SetupFilename "aseprite-process-recorder-0.8.2-validation-setup"
+#define SetupFilename "aseprite-process-recorder-0.8.3-validation-setup"
 #else
 #define InstallRoot "{localappdata}\Programs\Aseprite Process Recorder"
 #define PluginRoot "{userappdata}\Aseprite\extensions\aseprite-process-recorder"
-#define SetupFilename "aseprite-process-recorder-0.8.2-windows-x64-cn-setup"
+#define SetupFilename "aseprite-process-recorder-0.8.3-windows-x64-multilingual-setup"
 #endif
 
 [Setup]
@@ -37,10 +37,9 @@ WizardStyle=modern
 UninstallDisplayName={#AppName} {#AppVersion}
 UninstallDisplayIcon={app}\FFmpeg\ffmpeg.exe
 LicenseFile=licenses\GPL-3.0.txt
-InfoBeforeFile=README-安装说明.txt
-VersionInfoVersion=0.8.2.0
+VersionInfoVersion=0.8.3.0
 VersionInfoCompany={#AppPublisher}
-VersionInfoDescription={#AppName} Windows 安装程序
+VersionInfoDescription={#AppName} Windows Setup
 VersionInfoProductName={#AppName}
 VersionInfoProductVersion={#AppVersion}
 VersionInfoCopyright=MIT plug-in; FFmpeg GPLv3
@@ -53,15 +52,39 @@ CreateUninstallRegKey=no
 #endif
 
 [Languages]
-Name: "chinesesimplified"; MessagesFile: "inno-setup-source\Files\Languages\ChineseSimplified.isl"
-Name: "english"; MessagesFile: "compiler:Default.isl"
+Name: "chinesesimplified"; MessagesFile: "inno-setup-source\Files\Languages\ChineseSimplified.isl"; InfoBeforeFile: "README-安装说明.txt"
+Name: "english"; MessagesFile: "compiler:Default.isl"; InfoBeforeFile: "README-Install.en.txt"
+Name: "japanese"; MessagesFile: "compiler:Languages\Japanese.isl"; InfoBeforeFile: "README-Install.ja.txt"
+
+[CustomMessages]
+chinesesimplified.FullInstall=完整安装（推荐）
+english.FullInstall=Complete installation (recommended)
+japanese.FullInstall=すべてインストール（推奨）
+chinesesimplified.PluginComponent=Aseprite 绘画过程记录器插件
+english.PluginComponent=Aseprite Process Recorder extension
+japanese.PluginComponent=Aseprite 制作過程レコーダー拡張機能
+chinesesimplified.FfmpegComponent=FFmpeg 2026-08-06 essentials build + libx264 视频编码器
+english.FfmpegComponent=FFmpeg 2026-08-06 essentials build + libx264 video encoder
+japanese.FfmpegComponent=FFmpeg 2026-08-06 essentials build + libx264 動画エンコーダー
+chinesesimplified.InstallGuide=安装说明
+english.InstallGuide=Installation Guide
+japanese.InstallGuide=インストールガイド
+chinesesimplified.ThirdPartyLicenses=第三方许可说明
+english.ThirdPartyLicenses=Third-party Licenses
+japanese.ThirdPartyLicenses=サードパーティーのライセンス
+chinesesimplified.UninstallRecorder=卸载 Aseprite Process Recorder
+english.UninstallRecorder=Uninstall Aseprite Process Recorder
+japanese.UninstallRecorder=Aseprite Process Recorder をアンインストール
+chinesesimplified.CloseAseprite=检测到 Aseprite 正在运行。请完全退出 Aseprite 后，再点击“重试”。
+english.CloseAseprite=Aseprite is running. Close it completely, then click Retry.
+japanese.CloseAseprite=Aseprite が実行中です。完全に終了してから「再試行」をクリックしてください。
 
 [Types]
-Name: "full"; Description: "完整安装（推荐）"; Flags: iscustom
+Name: "full"; Description: "{cm:FullInstall}"; Flags: iscustom
 
 [Components]
-Name: "plugin"; Description: "Aseprite 绘画过程记录器插件"; Types: full; Flags: fixed
-Name: "ffmpeg"; Description: "FFmpeg 2026-08-06 essentials build + libx264 视频编码器"; Types: full; Flags: fixed
+Name: "plugin"; Description: "{cm:PluginComponent}"; Types: full; Flags: fixed
+Name: "ffmpeg"; Description: "{cm:FfmpegComponent}"; Types: full; Flags: fixed
 
 [Files]
 Source: "..\plugin\*"; DestDir: "{#PluginRoot}"; Flags: ignoreversion recursesubdirs createallsubdirs; Components: plugin
@@ -70,11 +93,15 @@ Source: "licenses\GPL-3.0.txt"; DestDir: "{app}\Licenses\FFmpeg"; DestName: "GPL
 Source: "licenses\FFMPEG-BUILD-README.txt"; DestDir: "{app}\Licenses\FFmpeg"; DestName: "BUILD-README.txt"; Flags: ignoreversion; Components: ffmpeg
 Source: "licenses\THIRD-PARTY-NOTICES.txt"; DestDir: "{app}\Licenses"; Flags: ignoreversion; Components: ffmpeg
 Source: "README-安装说明.txt"; DestDir: "{app}"; Flags: ignoreversion
+Source: "README-Install.en.txt"; DestDir: "{app}"; Flags: ignoreversion
+Source: "README-Install.ja.txt"; DestDir: "{app}"; Flags: ignoreversion
 
 [Icons]
-Name: "{group}\安装说明"; Filename: "{app}\README-安装说明.txt"
-Name: "{group}\第三方许可说明"; Filename: "{app}\Licenses\THIRD-PARTY-NOTICES.txt"
-Name: "{group}\卸载 {#AppName}"; Filename: "{uninstallexe}"
+Name: "{group}\{cm:InstallGuide}"; Filename: "{app}\README-安装说明.txt"; Languages: chinesesimplified
+Name: "{group}\{cm:InstallGuide}"; Filename: "{app}\README-Install.en.txt"; Languages: english
+Name: "{group}\{cm:InstallGuide}"; Filename: "{app}\README-Install.ja.txt"; Languages: japanese
+Name: "{group}\{cm:ThirdPartyLicenses}"; Filename: "{app}\Licenses\THIRD-PARTY-NOTICES.txt"
+Name: "{group}\{cm:UninstallRecorder}"; Filename: "{uninstallexe}"
 
 [InstallDelete]
 Type: filesandordirs; Name: "{#PluginRoot}\docs"
@@ -86,6 +113,7 @@ Type: filesandordirs; Name: "{app}\Licenses"
 
 [UninstallDelete]
 Type: files; Name: "{#PluginRoot}\journal.lua"
+Type: files; Name: "{#PluginRoot}\i18n.lua"
 Type: files; Name: "{#PluginRoot}\background-export.ps1"
 Type: files; Name: "{#PluginRoot}\LICENSE.txt"
 Type: files; Name: "{#PluginRoot}\main.lua"
@@ -99,6 +127,8 @@ Type: dirifempty; Name: "{#PluginRoot}"
 Type: filesandordirs; Name: "{app}\FFmpeg"
 Type: filesandordirs; Name: "{app}\Licenses"
 Type: files; Name: "{app}\README-安装说明.txt"
+Type: files; Name: "{app}\README-Install.en.txt"
+Type: files; Name: "{app}\README-Install.ja.txt"
 
 [Code]
 function IsAsepriteRunning: Boolean;
@@ -119,7 +149,7 @@ begin
   Result := '';
 #ifndef ValidationBuild
   if IsAsepriteRunning then
-    Result := '检测到 Aseprite 正在运行。请完全退出 Aseprite 后，再点击“重试”。';
+    Result := CustomMessage('CloseAseprite');
 #endif
 end;
 

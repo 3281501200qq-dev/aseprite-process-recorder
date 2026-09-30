@@ -1,8 +1,10 @@
 # Aseprite 绘画过程记录器
 
+[English](README.en.md) · [日本語](README.ja.md)
+
 面向 Windows x64 的 Aseprite 绘画过程记录器。它自动记录可见画面变化，用磁盘差分日志保存过程，并可直接导出 Aseprite 过程文件与 H.264 MP4。
 
-当前版本：`v0.8.2`
+当前版本：`v0.8.3`
 
 ## 主要特点
 
@@ -16,6 +18,7 @@
 - **中文路径验证**：中文目录、中文源文件名、中文 MP4 文件名均完成端到端测试。
 - **单文件安装器**：自动安装插件和独立 FFmpeg，用户不需要另行下载或配置。
 - **自动启动开关**：可在菜单中永久关闭或恢复打开画布时自动记录。
+- **三语界面**：简体中文、英语和日语；安装器及插件均可选择。
 
 ## 与常见 Aseprite 延时录制插件的区别
 
@@ -35,7 +38,7 @@
 
 ## 下载与安装
 
-1. 从 [Releases](https://github.com/3281501200qq-dev/aseprite-process-recorder/releases/latest) 下载 `aseprite-process-recorder-0.8.2-windows-x64-cn-setup.exe`。
+1. 从 [Releases](https://github.com/3281501200qq-dev/aseprite-process-recorder/releases/latest) 下载 `aseprite-process-recorder-0.8.3-windows-x64-multilingual-setup.exe`。
 2. 保存工作并完全退出 Aseprite。
 3. 运行安装器，完成后重新启动 Aseprite。
 
@@ -48,7 +51,11 @@ FFmpeg：%LOCALAPPDATA%\Programs\Aseprite Process Recorder\FFmpeg\ffmpeg.exe
 
 FFmpeg 不在插件目录中，也不会在绘画录制阶段运行；它只在导出 MP4 时作为独立进程启动。
 
-本版修复说明见 [v0.8.2 发布说明](RELEASE_NOTES_v0.8.2.md)；安装器基础使用指南见 [Windows 安装器使用指南](docs/Windows安装器使用指南-v0.8.0.md)。
+本版更新见 [v0.8.3 发布说明](RELEASE_NOTES_v0.8.3.md)；安装器基础使用指南见 [Windows 安装器使用指南](docs/Windows安装器使用指南-v0.8.0.md)。
+
+## 语言切换
+
+在“绘画过程记录器”菜单的“Language / 语言 / 言語”中选简体中文、English 或日本語，也可在设置窗口选择。选择会保存，提示和错误消息立即切换；重启 Aseprite 后菜单及设置标题也会更新。默认简体中文，已有用户的录制偏好不受影响。安装器根据所选语言显示对应说明。
 
 ## 自动启动开关
 

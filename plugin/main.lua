@@ -1,4 +1,6 @@
 local Recorder = require("recorder")
+local I18n = require("i18n")
+local t = I18n.text
 
 local PLUGIN_KEY = "process-recorder/aseprite-process-recorder"
 local DEFAULT_PLAYBACK_SPEED = 1
@@ -8,10 +10,7 @@ local MEMORY_BUDGETS_MB = { 128, 256, 512, 1024 }
 local DEFAULT_CAPTURE_MODE = "automatic"
 local DEFAULT_VIDEO_SCALE = "auto"
 local DEFAULT_AUTO_START = true
-local MODE_COMPLETE_LABEL = "完整模式（每次变化）"
-local MODE_AUTOMATIC_LABEL = "自动模式（推荐）"
-local MODE_PERFORMANCE_LABEL = "性能模式（大图/长时间）"
-local VIDEO_AUTO_LABEL = "自动安全放大（1–10倍）"
+local LANGUAGE_NAMES = { zh_CN = "简体中文", en = "English", ja = "日本語" }
 local recorder = Recorder.new()
 local extensionPlugin = nil
 local automationListener = nil
@@ -29,7 +28,7 @@ local autoStart = DEFAULT_AUTO_START
 
 local function showError(message)
   app.alert {
-    title = "绘画过程记录器",
+    title = t("title"),
     text = message,
     buttons = "OK"
   }
@@ -131,12 +130,12 @@ end
 
 local function captureModeLabel(value)
   if value == "complete" then
-    return MODE_COMPLETE_LABEL
+    return t("mode_complete")
   end
   if value == "performance" then
-    return MODE_PERFORMANCE_LABEL
+    return t("mode_performance")
   end
-  return MODE_AUTOMATIC_LABEL
+  return t("mode_automatic")
 end
 
 local function normalizeVideoScale(value)
@@ -296,8 +295,17 @@ end
 local function toggleAutoStart()
   setAutoStart(extensionPlugin, not autoStart)
   app.tip(autoStart
-    and "已开启：打开或切换画布时自动开始记录"
-    or "已关闭：不会自动开始记录，可手动点击“开始记录”")
+    and t("auto_start_on")
+    or t("auto_start_off"))
+end
+
+local function setLanguage(plugin, value)
+  local normalized = I18n.normalize(value)
+  if normalized == I18n.language() then
+    return
+  end
+  plugin.preferences.language = I18n.setLanguage(normalized)
+  app.tip(t("language_restart"))
 end
 
 local function finishRecording(showConfirmation, keepOutputOpen)
@@ -316,12 +324,12 @@ local function finishRecording(showConfirmation, keepOutputOpen)
   if result.pending then
     if showConfirmation then
       app.alert {
-        title = "绘画过程记录器",
+        title = t("title"),
         text = {
-          "过程日志已保存。",
-          "完整过程文件正在后台生成，不会阻塞当前文档操作。",
-          "完成后会自动更新输出文件。",
-          "清单：" .. result.manifestFilename
+          t("pending_saved"),
+          t("pending_export"),
+          t("pending_update"),
+          t("manifest") .. result.manifestFilename
         },
         buttons = "OK"
       }
@@ -332,14 +340,14 @@ local function finishRecording(showConfirmation, keepOutputOpen)
   if result.cancelled then
     local message
     if result.reason == "source_not_saved" then
-      message = "源画布从未保存，本次记录已取消。"
+      message = t("unsaved_cancelled")
     else
-      message = "没有记录到有效画面变化，本次不生成过程文件。"
+      message = t("unchanged_cancelled")
     end
 
     if showConfirmation then
       app.alert {
-        title = "绘画过程记录器",
+        title = t("title"),
         text = message,
         buttons = "OK"
       }
@@ -353,17 +361,17 @@ local function finishRecording(showConfirmation, keepOutputOpen)
 
   if showConfirmation then
     app.alert {
-      title = "绘画过程记录器",
+      title = t("title"),
       text = {
-        "绘画过程已保存。",
-        "帧数：" .. result.frameCount,
-        "分卷：" .. result.outputPartCount,
-        "记录时长：" .. string.format("%.3f 秒", result.elapsedMs / 1000),
-        "播放速度：" .. result.playbackSpeed .. "倍",
-        "记录模式：" .. captureModeLabel(result.captureProfile),
-        "密集事件合并：" .. result.coalescedEvents .. " 次",
-        "差分日志：" .. string.format("%.2f MB", result.journalBytes / 1024 / 1024),
-        "文件：" .. result.outputFilename
+        t("process_saved"),
+        t("frames") .. result.frameCount,
+        t("parts") .. result.outputPartCount,
+        t("duration") .. string.format("%.3f", result.elapsedMs / 1000) .. t("seconds"),
+        t("playback_speed") .. result.playbackSpeed .. t("times"),
+        t("mode") .. captureModeLabel(result.captureProfile),
+        t("merged") .. result.coalescedEvents .. t("count"),
+        t("journal") .. string.format("%.2f MB", result.journalBytes / 1024 / 1024),
+        t("file") .. result.outputFilename
       },
       buttons = "OK"
     }
@@ -374,69 +382,85 @@ end
 local function showRecordingSettings(plugin)
   local accepted = false
   local modeLabel = captureModeLabel(captureMode)
-  local speedLabel = tostring(playbackSpeed) .. "倍"
+  local speedLabel = tostring(playbackSpeed) .. t("times")
   if playbackSpeed == DEFAULT_PLAYBACK_SPEED then
-    speedLabel = speedLabel .. "（默认）"
+    speedLabel = t("speed_default")
   end
   local scaleLabel = videoScale == "auto"
-    and VIDEO_AUTO_LABEL
-    or tostring(videoScale) .. "倍"
+    and t("video_auto")
+    or tostring(videoScale) .. t("times")
 
-  local dialog = Dialog { title = "绘画过程记录器设置" }
+  local dialog = Dialog { title = t("settings_title") }
   dialog:combobox {
     id = "captureMode",
-    label = "记录模式：",
+    label = t("recording_mode"),
     option = modeLabel,
     options = {
-      MODE_COMPLETE_LABEL,
-      MODE_AUTOMATIC_LABEL,
-      MODE_PERFORMANCE_LABEL
+      t("mode_complete"),
+      t("mode_automatic"),
+      t("mode_performance")
     }
   }
   dialog:check {
     id = "autoStart",
-    text = "打开或切换画布时自动开始记录",
+    text = t("auto_start_setting"),
     selected = autoStart
   }
   dialog:combobox {
+    id = "language",
+    label = t("language_setting"),
+    option = LANGUAGE_NAMES[I18n.language()],
+    options = { LANGUAGE_NAMES.zh_CN, LANGUAGE_NAMES.en, LANGUAGE_NAMES.ja }
+  }
+  dialog:combobox {
     id = "playbackSpeed",
-    label = "播放速度：",
+    label = t("playback_speed"),
     option = speedLabel,
-    options = { "1倍（默认）", "2倍", "5倍", "10倍" }
+    options = {
+      t("speed_default"),
+      "2" .. t("times"),
+      "5" .. t("times"),
+      "10" .. t("times")
+    }
   }
   dialog:combobox {
     id = "videoScale",
-    label = "视频放大：",
+    label = t("video_scale"),
     option = scaleLabel,
     options = {
-      VIDEO_AUTO_LABEL,
-      "1倍", "2倍", "4倍", "6倍", "8倍", "10倍"
+      t("video_auto"),
+      "1" .. t("times"),
+      "2" .. t("times"),
+      "4" .. t("times"),
+      "6" .. t("times"),
+      "8" .. t("times"),
+      "10" .. t("times")
     }
   }
   dialog:file {
     id = "ffmpegPath",
-    label = "FFmpeg（安装器已配置）:",
-    title = "选择 FFmpeg 可执行文件",
+    label = t("ffmpeg_setting"),
+    title = t("select_ffmpeg"),
     open = true,
     filename = ffmpegPath or "",
     filetypes = app.os.windows and { "exe" } or nil
   }
   dialog:label {
-    text = "自动模式：小画布（≤65,536 像素）逐变化；大图仅合并密集事件。"
+    text = t("automatic_hint")
   }
   dialog:label {
-    text = "性能模式：更积极限频；停止时始终补录最终画面。"
+    text = t("performance_hint")
   }
   dialog:button {
     id = "apply",
-    text = "应用",
+    text = t("apply"),
     focus = true,
     onclick = function()
       accepted = true
       dialog:close()
     end
   }
-  dialog:button { text = "取消" }
+  dialog:button { text = t("cancel") }
   dialog:show { wait = true }
   if not accepted then
     return
@@ -444,14 +468,14 @@ local function showRecordingSettings(plugin)
 
   local data = dialog.data
   setAutoStart(plugin, data.autoStart == true)
-  local newCaptureMode = data.captureMode == MODE_COMPLETE_LABEL
+  local newCaptureMode = data.captureMode == t("mode_complete")
     and "complete"
-    or (data.captureMode == MODE_PERFORMANCE_LABEL
+    or (data.captureMode == t("mode_performance")
       and "performance"
       or "automatic")
   local newPlaybackSpeed = normalizePlaybackSpeed(
     tostring(data.playbackSpeed):match("^(%d+)"))
-  videoScale = data.videoScale == VIDEO_AUTO_LABEL
+  videoScale = data.videoScale == t("video_auto")
     and DEFAULT_VIDEO_SCALE
     or normalizeVideoScale(tostring(data.videoScale):match("^(%d+)"))
   plugin.preferences.videoScale = videoScale
@@ -465,6 +489,12 @@ local function showRecordingSettings(plugin)
   setPlaybackSpeed(plugin, newPlaybackSpeed)
   if recorder:isRecording() then
     recorder:setCaptureProfile(captureMode)
+  end
+  for code, name in pairs(LANGUAGE_NAMES) do
+    if data.language == name then
+      setLanguage(plugin, code)
+      break
+    end
   end
 end
 
@@ -481,8 +511,8 @@ local function exportCompactVideo()
 
   if ffmpegPath == nil or not app.fs.isFile(ffmpegPath) then
     showError {
-      "没有找到 FFmpeg。",
-      "请在记录器设置中选择 ffmpeg.exe（Windows）或 FFmpeg 可执行文件。"
+      t("ffmpeg_missing"),
+      t("ffmpeg_choose")
     }
     return
   end
@@ -499,13 +529,13 @@ local function exportCompactVideo()
   end
 
   app.alert {
-    title = "绘画过程记录器",
+    title = t("title"),
     text = {
-      "紧凑 MP4 已导出。",
-      "帧数：" .. result.frame_count,
-      "硬边缘放大：" .. result.scale .. "倍",
-      "耗时：" .. string.format("%.2f 秒", result.exportMilliseconds / 1000),
-      "文件：" .. result.outputFilename
+      t("mp4_exported"),
+      t("frames") .. result.frame_count,
+      t("hard_scale") .. result.scale .. t("times"),
+      t("elapsed") .. string.format("%.2f", result.exportMilliseconds / 1000) .. t("seconds"),
+      t("file") .. result.outputFilename
     },
     buttons = "OK"
   }
@@ -595,11 +625,12 @@ end
 
 function init(plugin)
   extensionPlugin = plugin
+  plugin.preferences.language = I18n.setLanguage(plugin.preferences.language)
   if not app.isUIAvailable then
     return
   end
   if app.apiVersion < 23 then
-    showError("需要 Aseprite 1.3-rc3 或更高版本（API 23）。")
+    showError(t("api_required"))
     return
   end
 
@@ -637,13 +668,13 @@ function init(plugin)
 
   plugin:newMenuGroup {
     id = "process_recorder_menu",
-    title = "绘画过程记录器",
+    title = t("title"),
     group = "sprite_crop"
   }
 
   plugin:newCommand {
     id = "ProcessRecorderSettings",
-    title = "记录器设置…",
+    title = t("settings_menu"),
     group = "process_recorder_menu",
     onclick = function()
       showRecordingSettings(plugin)
@@ -652,7 +683,7 @@ function init(plugin)
 
   plugin:newCommand {
     id = "ProcessRecorderAutoStart",
-    title = "打开画布时自动开始记录",
+    title = t("auto_start_menu"),
     group = "process_recorder_menu",
     onclick = toggleAutoStart,
     onchecked = function()
@@ -662,7 +693,7 @@ function init(plugin)
 
   plugin:newCommand {
     id = "ProcessRecorderStart",
-    title = "开始记录",
+    title = t("start_menu"),
     group = "process_recorder_menu",
     onclick = startRecording,
     onenabled = function()
@@ -674,7 +705,7 @@ function init(plugin)
 
   plugin:newCommand {
     id = "ProcessRecorderStop",
-    title = "停止并保存",
+    title = t("stop_menu"),
     group = "process_recorder_menu",
     onclick = stopRecording,
     onenabled = function()
@@ -684,9 +715,9 @@ function init(plugin)
 
   for _, speed in ipairs(PLAYBACK_SPEEDS) do
     local commandSpeed = speed
-    local title = "播放速度：" .. commandSpeed .. "倍"
+    local title = t("playback_speed") .. commandSpeed .. t("times")
     if commandSpeed == 1 then
-      title = "播放速度：原速（1倍）"
+      title = t("speed_original_menu")
     end
 
     plugin:newCommand {
@@ -706,7 +737,7 @@ function init(plugin)
     local commandBudget = budgetMb
     plugin:newCommand {
       id = "ProcessRecorderMemory" .. commandBudget .. "MB",
-      title = "记录器内存预算：" .. commandBudget .. " MB",
+      title = t("memory_menu") .. commandBudget .. " MB",
       group = "process_recorder_menu",
       onclick = function()
         setMemoryBudget(plugin, commandBudget)
@@ -719,13 +750,38 @@ function init(plugin)
 
   plugin:newCommand {
     id = "ProcessRecorderExportMP4",
-    title = "导出紧凑 MP4",
+    title = t("export_menu"),
     group = "process_recorder_menu",
     onclick = exportCompactVideo,
     onenabled = function()
       return app.sprite ~= nil and ffmpegPath ~= nil
     end
   }
+
+  plugin:newMenuGroup {
+    id = "process_recorder_language_menu",
+    title = t("language_menu"),
+    group = "process_recorder_menu"
+  }
+
+  for _, option in ipairs({
+    { code = "zh_CN", id = "Chinese" },
+    { code = "en", id = "English" },
+    { code = "ja", id = "Japanese" }
+  }) do
+    local code = option.code
+    plugin:newCommand {
+      id = "ProcessRecorderLanguage" .. option.id,
+      title = LANGUAGE_NAMES[code],
+      group = "process_recorder_language_menu",
+      onclick = function()
+        setLanguage(plugin, code)
+      end,
+      onchecked = function()
+        return I18n.language() == code
+      end
+    }
+  end
 
   if autoStart and app.sprite ~= nil then
     beginRecording(app.sprite)
